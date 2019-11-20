@@ -1,16 +1,28 @@
-# Tokio MiniHTTP
+# minihttp
 
-[![Build Status](https://travis-ci.org/tokio-rs/tokio-minihttp.svg?branch=master)](https://travis-ci.org/tokio-rs/tokio-minihttp)
-[![Build status](https://ci.appveyor.com/api/projects/status/pxh2602owjq4kn6b?svg=true)](https://ci.appveyor.com/project/alexcrichton/tokio-minihttp)
+This is a fork of [tokio-minihttp] ported to [`async-std`] and updated to to the
+latest version of [`tokio`].
 
-This library is a proof-of-concept implementation of a simple HTTP/1.1 server
-using Tokio.
+Note that [`tokio-minihttp`] is at the top of [TechEmpower benchmarks].
 
-The goal of the library is to demo the simplicity of implementing a protocol
-with Tokio. This is part of an effort of experimenting with multiple IO
-strategies in Rust in order to try to figure out the best path forward.
+The point of this fork is to compare performance of [`async-std`] and [`tokio`]
+at serving HTTP.
 
-This implementation of HTTP, while far from complete, demonstrates:
+## Usage
 
-* It is very simple to implement a complex protocol using Tokio.
-* It is very fast.
+Start an [`async-std`] or [`tokio`] server by running of the following two commands:
+
+* `c run --release --example async-std`
+* `c run --release --example tokio`
+
+Start a benchmark by using either [`autocannon`] or [`wrk`]:
+
+* `autocannon 0.0.0.0:8080/plaintext`
+* `wrk -t1 -c50 -d10 http://0.0.0.0:8080/plaintext`
+
+[tokio-minihttp]: https://github.com/tokio-rs/tokio-minihttp
+[TechEmpower benchmarks]: https://www.techempower.com/benchmarks/#section=data-r18&hw=ph&test=plaintext
+[`async-std`]: https://github.com/async-rs/async-std
+[`tokio`]: https://github.com/tokio-rs/tokio
+[`wrk`]: https://github.com/wg/wrk
+[`autocannon`]: https://github.com/mcollina/autocannon

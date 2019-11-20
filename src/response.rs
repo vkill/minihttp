@@ -1,6 +1,6 @@
 use std::fmt::{self, Write};
 
-use bytes::{BytesMut, BufMut};
+use bytes::{BufMut, BytesMut};
 
 pub struct Response {
     headers: Vec<(String, String)>,
@@ -10,7 +10,7 @@ pub struct Response {
 
 enum StatusMessage {
     Ok,
-    Custom(u32, String)
+    Custom(u32, String),
 }
 
 impl Response {
@@ -41,28 +41,35 @@ impl Response {
         self.response = b.to_vec();
         self
     }
-}
 
-pub fn encode(msg: Response, buf: &mut BytesMut) {
-    let length = msg.response.len();
-    let now = ::date::now();
+    pub fn encode(&self, buf: &mut BytesMut) {
+        let length = self.response.len();
+        let now = crate::date::now();
 
-    write!(FastWrite(buf), "\
-        HTTP/1.1 {}\r\n\
-        Server: Example\r\n\
-        Content-Length: {}\r\n\
-        Date: {}\r\n\
-    ", msg.status_message, length, now).unwrap();
+        write!(
+            FastWrite(buf),
+            "\
+             HTTP/1.1 {}\r\n\
+             Server: Example\r\n\
+             Content-Length: {}\r\n\
+             Date: {}\r\n\
+             ",
+            self.status_message,
+            length,
+            now
+        )
+        .unwrap();
 
-    for &(ref k, ref v) in &msg.headers {
-        push(buf, k.as_bytes());
-        push(buf, ": ".as_bytes());
-        push(buf, v.as_bytes());
+        for &(ref k, ref v) in &self.headers {
+            push(buf, k.as_bytes());
+            push(buf, ": ".as_bytes());
+            push(buf, v.as_bytes());
+            push(buf, "\r\n".as_bytes());
+        }
+
         push(buf, "\r\n".as_bytes());
+        push(buf, self.response.as_slice());
     }
-
-    push(buf, "\r\n".as_bytes());
-    push(buf, msg.response.as_slice());
 }
 
 fn push(buf: &mut BytesMut, data: &[u8]) {
