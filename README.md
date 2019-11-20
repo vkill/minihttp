@@ -12,8 +12,8 @@ at serving HTTP.
 
 Start an [`async-std`] or [`tokio`] server by running of the following two commands:
 
-* `c run --release --example async-std`
-* `c run --release --example tokio`
+* `cargo run --release --example async-std`
+* `cargo run --release --example tokio`
 
 Start a benchmark by using either [`autocannon`] or [`wrk`]:
 
