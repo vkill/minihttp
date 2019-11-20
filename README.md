@@ -10,7 +10,7 @@ at serving HTTP.
 
 ## Usage
 
-Start an [`async-std`] or [`tokio`] server by running oneof the following two
+Start an [`async-std`] or [`tokio`] server by running one of the following two
 commands:
 
 * `cargo run --release --example async-std`
