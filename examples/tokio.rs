@@ -27,7 +27,7 @@ async fn process(mut stream: TcpStream) -> io::Result<()> {
     }
 }
 
-#[tokio::main(basic_scheduler)]
+#[tokio::main]
 async fn main() -> io::Result<()> {
     let mut listener = TcpListener::bind("0.0.0.0:8080").await?;
     let mut incoming = listener.incoming();
