@@ -1,9 +1,11 @@
+use std::io;
+
 use bytes::BytesMut;
 use futures::prelude::*;
 use minihttp::{Request, Response};
-use tokio::io;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
+use tokio::task;
 
 async fn process(mut stream: TcpStream) -> io::Result<()> {
     let mut v = vec![0u8; 16 * 1024];
@@ -34,7 +36,7 @@ async fn main() -> io::Result<()> {
 
     while let Some(stream) = incoming.next().await {
         let stream = stream?;
-        tokio::spawn(async {
+        task::spawn(async {
             let _ = process(stream).await;
         });
     }
