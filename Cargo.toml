@@ -16,4 +16,4 @@ time = "0.1"
 
 [dev-dependencies]
 async-std = { git = "https://github.com/async-rs/async-std" }
-tokio = { git = "https://github.com/tokio-rs/tokio" }
+tokio = { git = "https://github.com/tokio-rs/tokio", features = ["full"] }
