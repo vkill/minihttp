@@ -35,10 +35,7 @@ async fn main() -> io::Result<()> {
     let mut incoming = listener.incoming();
 
     while let Some(stream) = incoming.next().await {
-        let stream = stream?;
-        task::spawn(async {
-            let _ = process(stream).await;
-        });
+        task::spawn(process(stream?));
     }
     Ok(())
 }
