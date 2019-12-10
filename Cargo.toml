@@ -15,5 +15,5 @@ httparse = "1.1.2"
 time = "0.1"
 
 [dev-dependencies]
-async-std = { git = "https://github.com/async-rs/async-std" }
-tokio = { git = "https://github.com/tokio-rs/tokio", features = ["full"] }
+async-std = { git = "https://github.com/stjepang/async-std.git", branch = "new-scheduler" }
+tokio = { version = "0.2", features = ["full"] }
