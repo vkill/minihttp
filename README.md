@@ -5,7 +5,7 @@ latest version of [`tokio`].
 
 Note that [`tokio-minihttp`] is at the top of [TechEmpower benchmarks].
 
-The point of this fork is to compare performance of [`async-std`] and [`tokio`]
+This benchmark compares the performance of async runtimes at serving HTTP.
 at serving HTTP.
 
 ## Usage
