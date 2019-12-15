@@ -6,7 +6,6 @@ latest version of [`tokio`].
 Note that [`tokio-minihttp`] is at the top of [TechEmpower benchmarks].
 
 This benchmark compares the performance of async runtimes at serving HTTP.
-at serving HTTP.
 
 ## Usage
 
