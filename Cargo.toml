@@ -17,5 +17,5 @@ time = "0.1"
 [dev-dependencies]
 async-std = { git = "https://github.com/stjepang/async-std.git" }
 num_cpus = "1.13.0"
-smol = { git = "https://github.com/stjepang/smol.git" }
+smol = { git = "https://github.com/stjepang/smol.git", branch = "wip" }
 tokio = { git = "https://github.com/tokio-rs/tokio.git", features = ["full"] }
