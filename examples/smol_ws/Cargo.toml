@@ -1,0 +1,17 @@
+[package]
+name = "smol_ws"
+version = "0.1.0"
+authors = ["vkill <vkill.net@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+minihttp = { path = "./../../../minihttp" }
+bytes = "0.4"
+futures = "0.3"
+
+smol = "0.1.10"
+num_cpus = "1.13.0"
+async-tungstenite = "0.5.0"
+sha-1 = "0.8.1"
+base64 = "0.12.1"
+piper = "0.1.2"
