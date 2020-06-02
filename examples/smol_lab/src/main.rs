@@ -1,11 +1,12 @@
 use std::io;
 use std::net::{TcpListener, TcpStream};
 use std::thread;
+use std::time::{Duration, SystemTime};
 
-use bytes::BytesMut;
+use bytes::{BufMut, BytesMut};
 use futures::prelude::*;
 use minihttp::{Request, Response};
-use smol::{Async, Task};
+use smol::{Async, Task, Timer};
 
 use async_dup::Arc;
 use async_tungstenite::tungstenite::protocol::Role;
@@ -116,7 +117,34 @@ async fn process(stream: Async<TcpStream>) -> io::Result<()> {
                 stream.write_all(&output).await?;
                 output.clear();
 
-                break '__http_loop "websocket";
+                break '__http_loop "ws";
+            } else if request.path() == "/sse" && request.method() == "GET" {
+                if request.version() != 1 {
+                    Response::new()
+                        .status_code(400, "Bad Request")
+                        .header("Content-Type", "text/plain")
+                        .body("HTTP version should be 1.1 or higher")
+                        .encode(&mut output);
+                    stream.write_all(&output).await?;
+                    output.clear();
+
+                    continue '__http_while;
+                }
+
+                let mut buf = BytesMut::with_capacity(1024);
+                buf.put(&b"HTTP/1.1 200 OK\r\n"[..]);
+                buf.put(&b"Content-Type: text/event-stream\r\n"[..]);
+                buf.put(&b"Cache-Control: no-cache\r\n"[..]);
+                buf.put(&b"Connection: keep-alive\r\n"[..]);
+                buf.put(&b"Access-Control-Allow-Origin: *\r\n"[..]);
+                buf.put(&b"\r\n"[..]);
+                buf.put(&b"retry: 10000\n\n"[..]);
+
+                output.extend_from_slice(&buf[..]);
+                stream.write_all(&output).await?;
+                output.clear();
+
+                break '__http_loop "sse";
             } else {
                 Response::new()
                     .header("Content-Type", "text/plain")
@@ -132,7 +160,10 @@ async fn process(stream: Async<TcpStream>) -> io::Result<()> {
     assert!(input.is_empty());
 
     //
-    if upgrade == "websocket" {
+    println!("upgrade: {}", upgrade);
+
+    //
+    if upgrade == "ws" {
         let role = Role::Server;
         let ws_stream = WebSocketStream::from_raw_socket(stream_arc.clone(), role, None).await;
         println!("New WebSocket connection: {:?}", ws_stream);
@@ -141,6 +172,14 @@ async fn process(stream: Async<TcpStream>) -> io::Result<()> {
         read.forward(write)
             .await
             .expect("Failed to forward message");
+    } else if upgrade == "sse" {
+        loop {
+            Timer::after(Duration::from_secs(1)).await;
+            stream_arc
+                .clone()
+                .write_all(format!("data: {:?}\n\n", SystemTime::now()).as_bytes())
+                .await?;
+        }
     }
 
     Ok(())
