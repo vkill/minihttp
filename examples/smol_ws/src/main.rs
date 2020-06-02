@@ -7,10 +7,10 @@ use futures::prelude::*;
 use minihttp::{Request, Response};
 use smol::{Async, Task};
 
+use async_dup::Arc;
 use async_tungstenite::tungstenite::protocol::Role;
 use async_tungstenite::WebSocketStream;
 use base64;
-use piper::Arc;
 use sha1::{Digest, Sha1};
 
 async fn process(stream: Async<TcpStream>) -> io::Result<()> {
