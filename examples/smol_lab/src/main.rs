@@ -13,8 +13,8 @@ use minihttp::{Request, Response};
 use smol::{Async, Task, Timer};
 
 use async_dup::Arc;
-use async_tungstenite::tungstenite::protocol::Role;
 use async_tungstenite::WebSocketStream;
+use async_tungstenite::{tungstenite::protocol::Role, tungstenite::Error as WSError};
 use base64;
 use sha1::{Digest, Sha1};
 
@@ -30,11 +30,11 @@ async fn process(stream: Async<TcpStream>) -> io::Result<()> {
     let mut input = BytesMut::new();
     let mut output = BytesMut::new();
 
-    let stream_arc = Arc::new(stream);
-    let mut stream = stream_arc.clone();
+    let stream = Arc::new(stream);
+    let mut stream_http = stream.clone();
 
     let upgrade = '__http_loop: loop {
-        match stream.read(&mut v).await? {
+        match stream_http.read(&mut v).await? {
             0 => return Ok(()),
             n => input.extend_from_slice(&v[..n]),
         }
@@ -48,7 +48,7 @@ async fn process(stream: Async<TcpStream>) -> io::Result<()> {
                         .header("Content-Type", "text/plain")
                         .body("HTTP version should be 1.1 or higher")
                         .encode(&mut output);
-                    stream.write_all(&output).await?;
+                    stream_http.write_all(&output).await?;
                     output.clear();
 
                     continue '__http_while;
@@ -64,7 +64,7 @@ async fn process(stream: Async<TcpStream>) -> io::Result<()> {
                         .header("Content-Type", "text/plain")
                         .body("No \"Connection: upgrade\" in client request")
                         .encode(&mut output);
-                    stream.write_all(&output).await?;
+                    stream_http.write_all(&output).await?;
                     output.clear();
 
                     continue '__http_while;
@@ -80,7 +80,7 @@ async fn process(stream: Async<TcpStream>) -> io::Result<()> {
                         .header("Content-Type", "text/plain")
                         .body("No \"Upgrade: websocket\" in client request")
                         .encode(&mut output);
-                    stream.write_all(&output).await?;
+                    stream_http.write_all(&output).await?;
                     output.clear();
 
                     continue '__http_while;
@@ -96,7 +96,7 @@ async fn process(stream: Async<TcpStream>) -> io::Result<()> {
                         .header("Content-Type", "text/plain")
                         .body("No \"Sec-WebSocket-Version: 13\" in client request")
                         .encode(&mut output);
-                    stream.write_all(&output).await?;
+                    stream_http.write_all(&output).await?;
                     output.clear();
 
                     continue '__http_while;
@@ -112,7 +112,7 @@ async fn process(stream: Async<TcpStream>) -> io::Result<()> {
                         .header("Content-Type", "text/plain")
                         .body("Missing Sec-WebSocket-Key")
                         .encode(&mut output);
-                    stream.write_all(&output).await?;
+                    stream_http.write_all(&output).await?;
                     output.clear();
 
                     continue '__http_while;
@@ -125,7 +125,7 @@ async fn process(stream: Async<TcpStream>) -> io::Result<()> {
                     .header("Upgrade", "websocket")
                     .header("Sec-WebSocket-Accept", convert_key(key)?.as_str())
                     .encode(&mut output);
-                stream.write_all(&output).await?;
+                stream_http.write_all(&output).await?;
                 output.clear();
 
                 break '__http_loop Upgrade::WS;
@@ -136,7 +136,7 @@ async fn process(stream: Async<TcpStream>) -> io::Result<()> {
                         .header("Content-Type", "text/plain")
                         .body("HTTP version should be 1.1 or higher")
                         .encode(&mut output);
-                    stream.write_all(&output).await?;
+                    stream_http.write_all(&output).await?;
                     output.clear();
 
                     continue '__http_while;
@@ -152,7 +152,7 @@ async fn process(stream: Async<TcpStream>) -> io::Result<()> {
                 buf.put(&b"retry: 10000\n\n"[..]);
 
                 output.extend_from_slice(&buf[..]);
-                stream.write_all(&output).await?;
+                stream_http.write_all(&output).await?;
                 output.clear();
 
                 break '__http_loop Upgrade::SSE;
@@ -163,7 +163,7 @@ async fn process(stream: Async<TcpStream>) -> io::Result<()> {
                         .header("Content-Type", "text/plain")
                         .body("HTTP version should be 1.1 or higher")
                         .encode(&mut output);
-                    stream.write_all(&output).await?;
+                    stream_http.write_all(&output).await?;
                     output.clear();
 
                     continue '__http_while;
@@ -179,7 +179,7 @@ async fn process(stream: Async<TcpStream>) -> io::Result<()> {
                 buf.put(&b"\r\n"[..]);
 
                 output.extend_from_slice(&buf[..]);
-                stream.write_all(&output).await?;
+                stream_http.write_all(&output).await?;
                 output.clear();
 
                 break '__http_loop Upgrade::Tunnel { stream_remote };
@@ -188,7 +188,7 @@ async fn process(stream: Async<TcpStream>) -> io::Result<()> {
                     .header("Content-Type", "text/plain")
                     .body("Hello, World!")
                     .encode(&mut output);
-                stream.write_all(&output).await?;
+                stream_http.write_all(&output).await?;
                 output.clear();
             }
         }
@@ -203,35 +203,44 @@ async fn process(stream: Async<TcpStream>) -> io::Result<()> {
     println!("upgrade: {:?}", upgrade);
 
     //
+    let mut stream_upgrade = stream;
     match upgrade {
         Upgrade::WS => {
             let role = Role::Server;
-            let ws_stream = WebSocketStream::from_raw_socket(stream_arc, role, None).await;
+            let ws_stream = WebSocketStream::from_raw_socket(stream_upgrade, role, None).await;
             println!("New WebSocket connection: {:?}", ws_stream);
             // https://github.com/sdroege/async-tungstenite/blob/0.5.0/examples/echo-server.rs#L48
             let (write, read) = ws_stream.split();
-            read.forward(write)
-                .await
-                .expect("Failed to forward message");
-        }
-        Upgrade::SSE => {
-            let mut stream_arc = stream_arc;
-            loop {
-                Timer::after(Duration::from_secs(1)).await;
-                stream_arc
-                    .write_all(format!("data: {:?}\n\n", SystemTime::now()).as_bytes())
-                    .await?;
+            match read.forward(write).await {
+                Ok(_) => {}
+                Err(e) => match e {
+                    WSError::ConnectionClosed => {}
+                    _ => {
+                        eprintln!("{:?}", e);
+                    }
+                },
             }
         }
+        Upgrade::SSE => {
+            Task::spawn(async move {
+                for _ in 0..30 {
+                    Timer::after(Duration::from_secs(1)).await;
+                    stream_upgrade
+                        .write_all(format!("data: {:?}\n\n", SystemTime::now()).as_bytes())
+                        .await
+                        .unwrap();
+                }
+            })
+            .await
+        }
         Upgrade::Tunnel { mut stream_remote } => {
-            let mut stream_arc = stream_arc;
             let mut v_remote = vec![0u8; 16 * 1024];
 
             loop {
                 select! {
-                    c = stream_arc.read(&mut v).fuse() => match c {
+                    c = stream_upgrade.read(&mut v).fuse() => match c {
                         Ok(n) => match n {
-                            0 => (),
+                            0 => break,
                             n => {
                                 stream_remote.write(&v[0..n]).await?;
                                 ()
@@ -246,7 +255,7 @@ async fn process(stream: Async<TcpStream>) -> io::Result<()> {
                         Ok(n) => match n {
                             0 => (),
                             n => {
-                                stream_arc.write(&v_remote[0..n]).await?;
+                                stream_upgrade.write(&v_remote[0..n]).await?;
                                 ()
                             },
                         },
@@ -286,7 +295,12 @@ fn main() -> io::Result<()> {
         while let Some(stream) = incoming.next().await {
             let stream = stream?;
             Task::spawn(async move {
-                let _ = process(stream).await;
+                match process(stream).await {
+                    Ok(_) => println!("process exit"),
+                    Err(e) => {
+                        eprintln!("process exit, e: {}", e);
+                    }
+                };
             })
             .detach();
         }
