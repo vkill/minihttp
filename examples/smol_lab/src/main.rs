@@ -222,16 +222,13 @@ async fn process(stream: Async<TcpStream>) -> io::Result<()> {
             }
         }
         Upgrade::SSE => {
-            Task::spawn(async move {
-                for _ in 0..30 {
-                    Timer::after(Duration::from_secs(1)).await;
-                    stream_upgrade
-                        .write_all(format!("data: {:?}\n\n", SystemTime::now()).as_bytes())
-                        .await
-                        .unwrap();
-                }
-            })
-            .await
+            for _ in 0..30 {
+                Timer::after(Duration::from_secs(1)).await;
+                stream_upgrade
+                    .write_all(format!("data: {:?}\n\n", SystemTime::now()).as_bytes())
+                    .await
+                    .unwrap();
+            }
         }
         Upgrade::Tunnel { mut stream_remote } => {
             let mut v_remote = vec![0u8; 16 * 1024];
