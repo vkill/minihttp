@@ -1,10 +1,14 @@
+#![recursion_limit = "256"]
+
 use std::io;
 use std::net::{TcpListener, TcpStream};
 use std::thread;
 use std::time::{Duration, SystemTime};
 
 use bytes::{BufMut, BytesMut};
+use futures::future::FutureExt;
 use futures::prelude::*;
+use futures::select;
 use minihttp::{Request, Response};
 use smol::{Async, Task, Timer};
 
@@ -13,6 +17,13 @@ use async_tungstenite::tungstenite::protocol::Role;
 use async_tungstenite::WebSocketStream;
 use base64;
 use sha1::{Digest, Sha1};
+
+#[derive(Debug)]
+enum Upgrade {
+    WS,
+    SSE,
+    Tunnel { stream_remote: Async<TcpStream> },
+}
 
 async fn process(stream: Async<TcpStream>) -> io::Result<()> {
     let mut v = vec![0u8; 16 * 1024];
@@ -117,7 +128,7 @@ async fn process(stream: Async<TcpStream>) -> io::Result<()> {
                 stream.write_all(&output).await?;
                 output.clear();
 
-                break '__http_loop "ws";
+                break '__http_loop Upgrade::WS;
             } else if request.path() == "/sse" && request.method() == "GET" {
                 if request.version() != 1 {
                     Response::new()
@@ -144,7 +155,34 @@ async fn process(stream: Async<TcpStream>) -> io::Result<()> {
                 stream.write_all(&output).await?;
                 output.clear();
 
-                break '__http_loop "sse";
+                break '__http_loop Upgrade::SSE;
+            } else if request.method() == "CONNECT" {
+                if request.version() != 1 {
+                    Response::new()
+                        .status_code(400, "Bad Request")
+                        .header("Content-Type", "text/plain")
+                        .body("HTTP version should be 1.1 or higher")
+                        .encode(&mut output);
+                    stream.write_all(&output).await?;
+                    output.clear();
+
+                    continue '__http_while;
+                }
+
+                let addr = request.path();
+                println!("addr: {}", addr);
+
+                let stream_remote = Async::<TcpStream>::connect(addr).await?;
+
+                let mut buf = BytesMut::with_capacity(1024);
+                buf.put(&b"HTTP/1.1 200 Connection established\r\n"[..]);
+                buf.put(&b"\r\n"[..]);
+
+                output.extend_from_slice(&buf[..]);
+                stream.write_all(&output).await?;
+                output.clear();
+
+                break '__http_loop Upgrade::Tunnel { stream_remote };
             } else {
                 Response::new()
                     .header("Content-Type", "text/plain")
@@ -157,28 +195,68 @@ async fn process(stream: Async<TcpStream>) -> io::Result<()> {
     };
 
     //
+    // assert!(v.is_empty());
     assert!(input.is_empty());
+    assert!(output.is_empty());
 
     //
-    println!("upgrade: {}", upgrade);
+    println!("upgrade: {:?}", upgrade);
 
     //
-    if upgrade == "ws" {
-        let role = Role::Server;
-        let ws_stream = WebSocketStream::from_raw_socket(stream_arc.clone(), role, None).await;
-        println!("New WebSocket connection: {:?}", ws_stream);
-        // https://github.com/sdroege/async-tungstenite/blob/0.5.0/examples/echo-server.rs#L48
-        let (write, read) = ws_stream.split();
-        read.forward(write)
-            .await
-            .expect("Failed to forward message");
-    } else if upgrade == "sse" {
-        loop {
-            Timer::after(Duration::from_secs(1)).await;
-            stream_arc
-                .clone()
-                .write_all(format!("data: {:?}\n\n", SystemTime::now()).as_bytes())
-                .await?;
+    match upgrade {
+        Upgrade::WS => {
+            let role = Role::Server;
+            let ws_stream = WebSocketStream::from_raw_socket(stream_arc, role, None).await;
+            println!("New WebSocket connection: {:?}", ws_stream);
+            // https://github.com/sdroege/async-tungstenite/blob/0.5.0/examples/echo-server.rs#L48
+            let (write, read) = ws_stream.split();
+            read.forward(write)
+                .await
+                .expect("Failed to forward message");
+        }
+        Upgrade::SSE => {
+            let mut stream_arc = stream_arc;
+            loop {
+                Timer::after(Duration::from_secs(1)).await;
+                stream_arc
+                    .write_all(format!("data: {:?}\n\n", SystemTime::now()).as_bytes())
+                    .await?;
+            }
+        }
+        Upgrade::Tunnel { mut stream_remote } => {
+            let mut stream_arc = stream_arc;
+            let mut v_remote = vec![0u8; 16 * 1024];
+
+            loop {
+                select! {
+                    c = stream_arc.read(&mut v).fuse() => match c {
+                        Ok(n) => match n {
+                            0 => (),
+                            n => {
+                                stream_remote.write(&v[0..n]).await?;
+                                ()
+                            },
+                        },
+                        Err(e) => {
+                            eprintln!("{:?}", e);
+                            ()
+                        }
+                    },
+                    s = stream_remote.read(&mut v_remote).fuse() => match s {
+                        Ok(n) => match n {
+                            0 => (),
+                            n => {
+                                stream_arc.write(&v_remote[0..n]).await?;
+                                ()
+                            },
+                        },
+                        Err(e) => {
+                            eprintln!("{:?}", e);
+                            ()
+                        }
+                    },
+                };
+            }
         }
     }
 

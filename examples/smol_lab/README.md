@@ -17,3 +17,7 @@ source.onmessage = function (event) {
   console.log("onmessage", data)
 };
 ```
+
+```
+curl -x http://127.0.0.1:8080 https://httpbin.org/ip -v
+```
